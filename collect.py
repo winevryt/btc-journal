@@ -36,11 +36,25 @@ SMA_WEEKS = 30
 
 # ────────────────────────────── 공통 ──────────────────────────────
 
-def _get(url, as_json=False):
-    req = urllib.request.Request(url, headers=UA)
-    with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
-        raw = r.read()
-    return json.loads(raw.decode("utf-8")) if as_json else raw.decode("utf-8", "replace")
+def _get(url, as_json=False, timeout=TIMEOUT, retries=3):
+    """일시적 오류(타임아웃·5xx)는 재시도. 4xx는 즉시 포기(요청이 잘못된 것)."""
+    last = None
+    for i in range(retries):
+        try:
+            req = urllib.request.Request(url, headers=UA)
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                raw = r.read()
+            return json.loads(raw.decode("utf-8")) if as_json else raw.decode("utf-8", "replace")
+        except urllib.error.HTTPError as e:
+            if 400 <= e.code < 500:
+                raise
+            last = e
+        except Exception as e:
+            last = e
+        if i < retries - 1:
+            import time
+            time.sleep(2 * (i + 1))
+    raise last
 
 
 def field(value=None, source=None, asof=None, method=None, error=None):
@@ -73,6 +87,18 @@ def cb_candles(granularity, start, end):
            f"&start={start.astimezone(UTC).strftime('%Y-%m-%dT%H:%M:%SZ')}"
            f"&end={end.astimezone(UTC).strftime('%Y-%m-%dT%H:%M:%SZ')}")
     return _get(url, as_json=True)
+
+
+def resolve_ref_date(ref_date):
+    """22:00 KST가 아직 지나지 않았으면 전일로 물린다.
+    낮에 수동 실행해도 미래 캔들을 요청하지 않게 하는 안전장치."""
+    cutoff = dt.datetime.combine(ref_date, dt.time(22, 0), tzinfo=KST)
+    now = dt.datetime.now(KST)
+    if now < cutoff + dt.timedelta(minutes=2):
+        newd = ref_date - dt.timedelta(days=1)
+        print(f"[안내] {ref_date} 22:00 KST 미도래(현재 {now:%H:%M} KST) → {newd} 기준으로 수집한다.")
+        return newd
+    return ref_date
 
 
 def fetch_price_2200kst(ref_date):
@@ -220,7 +246,7 @@ FRED = "https://fred.stlouisfed.org/graph/fredgraph.csv?id={sid}"
 
 def fetch_dollar(ref_date, series_id="DTWEXBGS", half=10):
     rows = []
-    for row in csv.reader(io.StringIO(_get(FRED.format(sid=series_id)))):
+    for row in csv.reader(io.StringIO(_get(FRED.format(sid=series_id), timeout=90))):
         if len(row) < 2 or row[0].lower().startswith(("date", "observation")):
             continue
         v = row[1].strip()
@@ -410,6 +436,7 @@ def derive(snap, prev):
 
 
 def collect(ref_date):
+    ref_date = resolve_ref_date(ref_date)
     snap = {
         "schema": "btc-journal-snapshot/1.0",
         "rule_version": "v1.1",
@@ -513,8 +540,22 @@ def main():
         return
     ref = dt.date.fromisoformat(args[0]) if args else dt.datetime.now(KST).date()
     snap = collect(ref)
+    ref = dt.date.fromisoformat(snap["ref_date"])
     os.makedirs(SNAP_DIR, exist_ok=True)
     path = os.path.join(SNAP_DIR, f"{ref.isoformat()}T2200KST.json")
+
+    # 이미 더 완전한 스냅샷이 있으면 덮어쓰지 않는다
+    if os.path.exists(path):
+        try:
+            with open(path, encoding="utf-8") as fh:
+                old = json.load(fh)
+            if (old.get("derived", {}).get("conditions_known", 0)
+                    > snap["derived"].get("conditions_known", 0)):
+                path = path.replace(".json", ".partial.json")
+                print(f"[안내] 기존 스냅샷이 더 완전하다. 덮어쓰지 않고 {os.path.basename(path)} 로 저장한다.")
+        except Exception:
+            pass
+
     with open(path, "w", encoding="utf-8") as fh:
         json.dump(snap, fh, ensure_ascii=False, indent=2)
     report(snap)
