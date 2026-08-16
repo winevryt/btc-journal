@@ -3,7 +3,12 @@ name: btc-snapshot
 on:
   schedule:
     - cron: "5 13 * * *"
-  workflow_dispatch:
+workflow_dispatch:
+    inputs:
+      date:
+        description: "수집할 날짜 (YYYY-MM-DD). 비우면 오늘"
+        required: false
+        default: ""workflow_dispatch:
 
 permissions:
   contents: write
