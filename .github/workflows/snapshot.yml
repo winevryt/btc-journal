@@ -1,0 +1,44 @@
+name: btc-snapshot
+
+on:
+  schedule:
+    - cron: "5 13 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: selftest
+        run: python3 collect.py --selftest
+
+      - name: collect
+        id: collect
+        continue-on-error: true
+        run: python3 collect.py "$(date -u +%F)"
+
+      - name: commit
+        if: always()
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add snapshots || true
+          git diff --staged --quiet && echo "no changes" && exit 0
+          git commit -m "snapshot $(date -u +%F)"
+          git pull --rebase --autostash || true
+          git push
+
+      - name: fail if incomplete
+        if: steps.collect.outcome == 'failure'
+        run: |
+          echo "::error::3조건 중 일부 미산출 - JSON의 unverified 확인"
+          exit 1
