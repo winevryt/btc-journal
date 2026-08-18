@@ -3,14 +3,14 @@
   "rule_version": "v1.1",
   "ref_date": "2026-08-16",
   "ref_time_kst": "22:00",
-  "collected_at": "2026-08-16T03:29:19.984829+00:00",
+  "collected_at": "2026-08-18T09:59:36.272799+00:00",
   "price": {
-    "value": null,
-    "source": null,
-    "asof": null,
-    "method": null,
-    "error": "HTTPError: HTTP Error 400: Bad Request",
-    "verified": false
+    "value": 62948.0,
+    "source": "Coinbase Exchange /products/BTC-USD/candles granularity=3600",
+    "asof": "2026-08-16T12:00:00+00:00",
+    "method": "21:00–22:00 KST(12:00–13:00 UTC) 1시간봉 종가",
+    "error": null,
+    "verified": true
   },
   "weekly_closes": {
     "value": [
@@ -290,57 +290,76 @@
   },
   "vlab_gjr": {
     "value": {
-      "h1d": 30.88,
-      "h1w": 34.79,
-      "h1m": 46.32,
-      "spot_conditional": 30.98,
+      "h1d": 33.95,
+      "h1w": 37.46,
+      "h1m": 48.15,
+      "spot_conditional": 30.14,
       "spot_consistent": true,
-      "updated_at": "Saturday, August 15, 2026 at 06:01 AM UTC",
-      "estimation_period": "Jul 17, 2010 to Aug 14, 2026"
+      "updated_at": "Tuesday, August 18, 2026 at 06:01 AM UTC",
+      "estimation_period": "Jul 17, 2010 to Aug 15, 2026"
     },
     "source": "V-Lab GJR-GARCH",
-    "asof": "Saturday, August 15, 2026 at 06:01 AM UTC",
+    "asof": "Tuesday, August 18, 2026 at 06:01 AM UTC",
     "method": "h1m=현 운용 정의(C1). spot_conditional=표시 델타 역산, 세 지평 교차검증.",
     "error": null,
     "verified": true
   },
   "vlab_egarch": {
     "value": {
-      "h1d": 26.1,
-      "h1w": 29.33,
-      "h1m": 42.53,
-      "spot_conditional": 26.01,
+      "h1d": 28.99,
+      "h1w": 32.24,
+      "h1m": 45.14,
+      "spot_conditional": 23.87,
       "spot_consistent": true,
-      "updated_at": "Saturday, August 15, 2026 at 06:01 AM UTC",
-      "estimation_period": "Jul 17, 2010 to Aug 14, 2026"
+      "updated_at": "Tuesday, August 18, 2026 at 06:01 AM UTC",
+      "estimation_period": "Jul 17, 2010 to Aug 15, 2026"
     },
     "source": "V-Lab EGARCH",
-    "asof": "Saturday, August 15, 2026 at 06:01 AM UTC",
+    "asof": "Tuesday, August 18, 2026 at 06:01 AM UTC",
     "method": "h1m=현 운용 정의(C1). spot_conditional=표시 델타 역산, 세 지평 교차검증.",
     "error": null,
     "verified": true
   },
   "kimp": {
-    "value": null,
-    "source": null,
-    "asof": null,
-    "method": null,
-    "error": "price unavailable",
-    "verified": false
+    "value": {
+      "upbit_krw": 89165000.0,
+      "coinbase_usd": 62948.0,
+      "usdkrw": 1411.27,
+      "premium_pct": 0.37
+    },
+    "source": "Upbit KRW-BTC · Coinbase BTC-USD · Frankfurter(ECB) USD/KRW",
+    "asof": "2026-08-16 22:00 KST",
+    "method": "(업비트 원화가) / (코인베이스 달러가 × 환율) − 1. 환율은 ECB 일일 기준(16:00 CET)이라 22:00 KST와 시점이 다르다. 확인지표 — 신호등 없음.",
+    "error": null,
+    "verified": true
   },
   "derived": {
+    "sma30": 69661.73,
+    "completed_sum_29w": 2026903.96,
+    "divergence_pct": -9.638,
+    "cross_price": 69893.24,
+    "price_gap_to_cross_pct": 11.03,
+    "c3_position_ok": false,
+    "c3_ok": false,
     "c2_gap_bp": 58.5,
     "c2_ok": false,
     "c2_distance_bp": -58.5,
-    "c1_value": 46.32,
+    "c1_value": 48.15,
     "c1_ok": false,
-    "c1_distance_pp": -6.32,
+    "c1_distance_pp": -8.15,
+    "divergence_delta_pp": -0.053,
+    "contrib_price_pp": -0.054,
+    "contrib_centerline_pp": 0.001,
+    "prev": {
+      "date": "2026-08-15",
+      "price": 62985.93,
+      "sma30": 69663.0,
+      "divergence_pct": -9.585
+    },
     "conditions_met": 0,
-    "conditions_known": 2
+    "conditions_known": 3
   },
   "unverified": [
-    "price",
-    "dollar",
-    "kimp"
+    "dollar"
   ]
 }
