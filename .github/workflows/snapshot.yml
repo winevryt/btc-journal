@@ -33,7 +33,7 @@ jobs:
       - name: collect
         id: collect
         continue-on-error: true
-        run: python3 collect.py "${{ inputs.date || '' }}"
+        run: python3 collect.py ${{ inputs.date }}
 
       - name: commit
         if: always()
