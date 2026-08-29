@@ -1,13 +1,13 @@
 {
   "schema": "btc-journal-snapshot/1.0",
   "rule_version": "v1.1",
-  "ref_date": "2026-08-26",
+  "ref_date": "2026-08-27",
   "ref_time_kst": "22:00",
-  "collected_at": "2026-08-29T13:17:21.881728+00:00",
+  "collected_at": "2026-08-29T13:22:13.756544+00:00",
   "price": {
-    "value": 78299.51,
+    "value": 79276.06,
     "source": "Coinbase Exchange /products/BTC-USD/candles granularity=3600",
-    "asof": "2026-08-26T12:00:00+00:00",
+    "asof": "2026-08-27T12:00:00+00:00",
     "method": "21:00–22:00 KST(12:00–13:00 UTC) 1시간봉 종가",
     "error": null,
     "verified": true
@@ -140,23 +140,19 @@
       }
     ],
     "source": "Coinbase Exchange /products/BTC-USD/candles granularity=86400",
-    "asof": "2026-08-26",
+    "asof": "2026-08-27",
     "method": "주 경계 월 00:00 UTC~일 23:59 UTC · 주봉 종가=그 주 마지막 일봉 종가 · 진행 주(2026-08-24) 제외",
     "error": null,
     "verified": true
   },
   "tips": {
     "value": {
-      "current": 2.32,
-      "current_date": "2026-08-25",
-      "anchor_smoothed": 1.7919,
-      "anchor_center_date": "2026-02-25",
-      "anchor_point_value": 1.77,
+      "current": 2.34,
+      "current_date": "2026-08-26",
+      "anchor_smoothed": 1.7943,
+      "anchor_center_date": "2026-02-26",
+      "anchor_point_value": 1.74,
       "anchor_window": [
-        [
-          "2026-02-10",
-          1.84
-        ],
         [
           "2026-02-11",
           1.86
@@ -236,13 +232,17 @@
         [
           "2026-03-11",
           1.85
+        ],
+        [
+          "2026-03-12",
+          1.89
         ]
       ],
-      "gap_bp_v11": 52.8,
-      "gap_bp_pointwise": 55.0
+      "gap_bp_v11": 54.6,
+      "gap_bp_pointwise": 60.0
     },
     "source": "U.S. Treasury Daily Par Real Yield Curve (CSV)",
-    "asof": "2026-08-25",
+    "asof": "2026-08-26",
     "method": "현재=직전 영업일 확정치 · 앵커=6개월 전 중심 21영업일 평균 (규칙 v1.1)",
     "error": null,
     "verified": true
@@ -259,10 +259,6 @@
     "value": {
       "daily": [
         [
-          "2026-08-19",
-          517.2
-        ],
-        [
           "2026-08-20",
           606.3
         ],
@@ -277,13 +273,17 @@
         [
           "2026-08-25",
           314.3
+        ],
+        [
+          "2026-08-26",
+          232.2
         ]
       ],
-      "sum_musd": 2082.9,
-      "window": "2026-08-19~2026-08-25"
+      "sum_musd": 1797.9,
+      "window": "2026-08-20~2026-08-26"
     },
     "source": "Farside Investors",
-    "asof": "2026-08-25",
+    "asof": "2026-08-26",
     "method": "직전 확정 5거래일 누적 · 확인지표(진입 신호 아님)",
     "error": null,
     "verified": true
@@ -322,34 +322,34 @@
   },
   "kimp": {
     "value": {
-      "upbit_krw": 109012000.0,
-      "coinbase_usd": 78299.51,
-      "usdkrw": 1383.49,
-      "premium_pct": 0.633
+      "upbit_krw": 109914000.0,
+      "coinbase_usd": 79276.06,
+      "usdkrw": 1380.38,
+      "premium_pct": 0.441
     },
     "source": "Upbit KRW-BTC · Coinbase BTC-USD · Frankfurter(ECB) USD/KRW",
-    "asof": "2026-08-26 22:00 KST",
+    "asof": "2026-08-27 22:00 KST",
     "method": "(업비트 원화가) / (코인베이스 달러가 × 환율) − 1. 환율은 ECB 일일 기준(16:00 CET)이라 22:00 KST와 시점이 다르다. 확인지표 — 신호등 없음.",
     "error": null,
     "verified": true
   },
   "derived": {
-    "sma30": 69410.4,
+    "sma30": 69442.95,
     "completed_sum_29w": 2004012.51,
-    "divergence_pct": 12.807,
+    "divergence_pct": 14.16,
     "cross_price": 69103.88,
-    "price_gap_to_cross_pct": -11.74,
+    "price_gap_to_cross_pct": -12.83,
     "c3_position_ok": true,
     "c3_ok": false,
-    "c2_gap_bp": 52.8,
+    "c2_gap_bp": 54.6,
     "c2_ok": false,
-    "c2_distance_bp": -52.8,
+    "c2_distance_bp": -54.6,
     "c1_value": 59.12,
     "c1_ok": false,
     "c1_distance_pp": -19.12,
-    "divergence_delta_pp": -0.931,
-    "contrib_price_pp": -0.968,
-    "contrib_centerline_pp": 0.037,
+    "divergence_delta_pp": 0.422,
+    "contrib_price_pp": 0.439,
+    "contrib_centerline_pp": -0.017,
     "prev": {
       "date": "2026-08-25",
       "price": 78971.29,
