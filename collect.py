@@ -143,7 +143,7 @@ def fetch_weekly_closes(ref_date, weeks=SMA_WEEKS + 2):
 
     done = [(wk, v[1]) for wk, v in sorted(buckets.items()) if wk < cur_wk]
     return field(
-        value=[{"week_start": wk.isoformat(), "close": round(c, 2)} for wk, c in done[-(SMA_WEEKS + 1):]],
+        value=[{"week_start": wk.isoformat(), "close": round(c, 2)} for wk, c in done[-(SMA_WEEKS + 4):]],
         source="Coinbase Exchange /products/BTC-USD/candles granularity=86400",
         asof=ref_utc.isoformat(),
         method=f"주 경계 월 00:00 UTC~일 23:59 UTC · 주봉 종가=그 주 마지막 일봉 종가 · 진행 주({cur_wk}) 제외",
@@ -239,21 +239,46 @@ def fetch_tips(ref_date, half=10):
     )
 
 
-# ───────────────────────── 3. 달러지수 (FRED) ─────────────────────────
+# ──────────────────── 3. 달러지수 (ECB 재구성) ────────────────────
+#
+# DXY는 ICE 독점 지수라 무료 공개 API로 확정 종가를 재조회할 수 없다.
+# 그래서 공개된 DXY 가중치를 ECB 일일 기준환율에 다시 적용해 계열을 만든다.
+#
+# ⚠ 이 값은 DXY가 아니다. ECB 기준시각(16:00 CET)이 미 정규장 마감과 다르므로
+#   수준이 어긋난다. 카드 표기는 "달러지수 (ECB 재구성)".
+#   구 FRED DTWEXBGS 계열과 접합 금지 — 잣대가 다른 두 값의 뺄셈이 된다.
 
-FRED = "https://fred.stlouisfed.org/graph/fredgraph.csv?id={sid}"
+FRANKFURTER = "https://api.frankfurter.app/{rng}?from=USD&to=EUR,JPY,GBP,CAD,SEK,CHF"
+
+# ICE 공개 가중치. 원식은 EURUSD^-0.576 · USDJPY^+0.136 · GBPUSD^-0.119 · …
+# 프랑크푸르터는 USD 기준(1 USD = r[XXX])으로 주므로 EURUSD = 1/r["EUR"],
+# GBPUSD = 1/r["GBP"] 가 되어 여섯 항 모두 양수 지수로 정리된다.
+DXY_W = {"EUR": 0.576, "JPY": 0.136, "GBP": 0.119,
+         "CAD": 0.091, "SEK": 0.042, "CHF": 0.036}
+DXY_K = 50.14348112
 
 
-def fetch_dollar(ref_date, series_id="DTWEXBGS", half=10):
+def dxy_from_usd_rates(r):
+    v = DXY_K
+    for k, w in DXY_W.items():
+        v *= float(r[k]) ** w
+    return v
+
+
+def fetch_dollar(ref_date, half=10):
+    """현재값 + 6개월 전 앵커(전후 21영업일 평균). 한 번의 시계열 요청으로 끝낸다."""
+    start = ref_date - dt.timedelta(days=210)
+    url = FRANKFURTER.format(rng=f"{start.isoformat()}..{ref_date.isoformat()}")
+    js = _get(url, as_json=True, timeout=60)
+
     rows = []
-    for row in csv.reader(io.StringIO(_get(FRED.format(sid=series_id), timeout=90))):
-        if len(row) < 2 or row[0].lower().startswith(("date", "observation")):
+    for ds, r in sorted(js.get("rates", {}).items()):
+        if not all(k in r for k in DXY_W):
             continue
-        v = row[1].strip()
-        if v in (".", ""):
-            continue
-        rows.append((dt.datetime.strptime(row[0].strip(), "%Y-%m-%d").date(), float(v)))
-    rows.sort()
+        rows.append((dt.date.fromisoformat(ds), round(dxy_from_usd_rates(r), 4)))
+    if not rows:
+        raise RuntimeError("frankfurter returned no usable rows")
+
     past = [x for x in rows if x[0] < ref_date]
     if not past:
         raise RuntimeError("no observation before ref_date")
@@ -265,12 +290,15 @@ def fetch_dollar(ref_date, series_id="DTWEXBGS", half=10):
     anchor = sum(v for _, v in win) / len(win) if len(win) >= 2 * half + 1 else None
 
     return field(
-        value={"current": cur_val, "current_date": cur_date.isoformat(),
-               "anchor_smoothed": round(anchor, 4) if anchor else None,
+        value={"current": round(cur_val, 3), "current_date": cur_date.isoformat(),
+               "anchor_smoothed": round(anchor, 3) if anchor else None,
+               "anchor_center_date": rows[idx][0].isoformat(),
                "change_pct": round((cur_val / anchor - 1) * 100, 2) if anchor else None},
-        source=f"FRED {series_id} (Nominal Broad U.S. Dollar Index, 연준 공식)",
+        source="ECB 기준환율(Frankfurter) 재구성 · 가중치는 ICE DXY 공개값",
         asof=cur_date.isoformat(),
-        method="DXY(ICE 독점·재조회 불가) 대체. 신호등 없는 참고 지표.",
+        method=("DXY 산식을 ECB 일일 기준환율(16:00 CET)에 재적용한 계열. "
+                "DXY 자체가 아니며 구 FRED DTWEXBGS와 접합 금지. "
+                f"앵커=6개월 전 중심 {2 * half + 1}영업일 평균. 신호등 없는 참고 지표."),
     )
 
 
@@ -404,7 +432,8 @@ def derive(snap, prev):
             d["sma30_slope_4w"] = round(d["sma30"] - s4, 2)
             d["c3_slope_ok"] = d["sma30"] >= s4
         d["c3_position_ok"] = px > d["sma30"]
-        d["c3_ok"] = bool(d.get("c3_position_ok")) and bool(d.get("c3_slope_ok"))
+        # 규칙 v1.1: 기울기는 관찰 항목으로 강등. 공식 판정은 가격 위치만으로 한다.
+        d["c3_ok"] = bool(d.get("c3_position_ok"))
 
     t = snap["tips"]["value"]
     if t:
@@ -473,7 +502,7 @@ def report(snap):
         print(f"가격 ${snap['price']['value']:,.2f}  SMA30 ${d['sma30']:,.2f}  이격률 {d['divergence_pct']:+.2f}%")
         print(f"교차가 ${d['cross_price']:,.2f}  (30주선까지 {d['price_gap_to_cross_pct']:+.2f}%)")
         if "sma30_slope_4w" in d:
-            print(f"기울기 4주 {d['sma30_slope_4w']:+,.2f}  → 기울기 조건 {'충족' if d['c3_slope_ok'] else '미충족'}")
+            print(f"기울기 4주 {d['sma30_slope_4w']:+,.2f}  (관찰 항목 — 판정에 쓰지 않는다)")
     if "contrib_price_pp" in d:
         print(f"이격률 변화 {d['divergence_delta_pp']:+.2f}%p"
               f"  = 가격 {d['contrib_price_pp']:+.2f}%p + 중심선 {d['contrib_centerline_pp']:+.2f}%p")
@@ -481,6 +510,11 @@ def report(snap):
         print(f"C1 변동폭 {d['c1_value']}%  (충족선까지 {d['c1_distance_pp']:+.2f}%p)")
     if d.get("c2_gap_bp") is not None:
         print(f"C2 실질금리 갭 {d['c2_gap_bp']:+.1f}bp  (충족선까지 {-d['c2_distance_bp']:+.1f}bp)")
+    dv = snap.get("dollar", {}).get("value")
+    if dv and dv.get("change_pct") is not None:
+        print(f"달러지수(ECB 재구성) {dv['current']:.2f}  "
+              f"6개월 앵커 대비 {dv['change_pct']:+.2f}%  [참고 지표]")
+
     if snap["unverified"]:
         print(f"\n⚠ 미검증 → 카드에 [미측정] 표기 필수: {', '.join(snap['unverified'])}")
         for k in snap["unverified"]:
@@ -530,11 +564,34 @@ def selftest():
     assert abs(anchor - 1.8252) < 1e-3, anchor
     assert abs((2.39 - anchor) * 100 - 56.5) < 0.6
     print(f"  TIPS 앵커 평활화 OK  (앵커 {anchor:.4f}% · 갭 {(2.39-anchor)*100:+.1f}bp)")
+    # C3 판정: 기울기를 못 구해도 가격 위치만으로 켜져야 한다 (규칙 v1.1)
+    wk29 = [{"week_start": "x", "close": 69000.0}] * 29
+    snap2 = {"price": {"value": 79276.06}, "weekly_closes": {"value": wk29},
+             "tips": {"value": None}, "vlab_gjr": {"value": None}}
+    d2 = derive(snap2, None)
+    assert d2["c3_position_ok"] is True, d2
+    assert "c3_slope_ok" not in d2, "기울기는 주봉 부족 시 없어야 한다"
+    assert d2["c3_ok"] is True, "기울기 미산출이 C3를 끄면 안 된다"
+    assert d2["conditions_met"] == 1 and d2["conditions_known"] == 1, d2
+    print(f"  C3 위치 단독 판정 OK  (이격률 {d2['divergence_pct']:+.2f}% → 충족)")
+
+    # 달러지수 재구성 산식
+    rates = {"EUR": 1 / 1.10, "JPY": 150.0, "GBP": 1 / 1.30,
+             "CAD": 1.35, "SEK": 10.50, "CHF": 0.88}
+    idx = dxy_from_usd_rates(rates)
+    assert abs(idx - 102.686) < 0.01, idx
+    assert abs(dxy_from_usd_rates({k: 1.0 for k in DXY_W}) - DXY_K) < 1e-9
+    print(f"  달러지수 재구성 산식 OK  (검증 환율 → {idx:.3f})")
+
+    # 빈 인자 방어 (워크플로가 스케줄 실행 때 "" 를 넘긴다)
+    assert [a for a in ["", "--x"] if a.strip()] == ["--x"]
+    print("  빈 인자 무시 OK")
+
     print("── 전부 통과 ──")
 
 
 def main():
-    args = [a for a in sys.argv[1:]]
+    args = [a for a in sys.argv[1:] if a.strip()]   # 빈 문자열 인자 무시
     if "--selftest" in args:
         selftest()
         return
