@@ -403,6 +403,94 @@ def fetch_kimp(ref_date, usd_price):
     )
 
 
+
+# ──────────────── ATH · 이격률 게이지 범위 (규칙 2026-09-23) ────────────────
+# ATH       = 기간 창 없는 사상 최고가(Coinbase 일봉 종가 기준). 새 최고가가 나오면 즉시 교체.
+# 게이지 구간 = GAUGE_START 고정. 최저·최고 = 그날 이후 이격률의 누적 최저·누적 최고.
+#             ATH가 갱신돼도 게이지 구간은 재시작하지 않는다.
+GAUGE_START = dt.date(2025, 10, 6)
+ATH_SEED = dt.date(2025, 10, 6)      # 사상 최고가 초기 기준일(이 날 이전 최고가는 이미 넘어섰다)
+
+
+def cb_daily_range(start_date, end_date):
+    """[start_date, end_date) 완결 일봉 종가. Coinbase는 요청당 300개 제한 → 290일씩 분할."""
+    out = {}
+    cur = start_date
+    while cur < end_date:
+        nxt = min(cur + dt.timedelta(days=290), end_date)
+        s = dt.datetime.combine(cur, dt.time(0, 0), tzinfo=UTC)
+        e = dt.datetime.combine(nxt, dt.time(0, 0), tzinfo=UTC) - dt.timedelta(seconds=1)
+        for r in cb_candles(86400, s, e) or []:
+            d = dt.datetime.fromtimestamp(int(r[0]), UTC).date()
+            if start_date <= d < end_date:
+                out[d] = float(r[4])
+        cur = nxt
+    days = sorted(out)
+    gaps = [(a, b) for a, b in zip(days, days[1:]) if (b - a).days != 1]
+    if gaps:
+        raise RuntimeError(f"일봉 누락 구간: {gaps[:3]}")
+    return [(d, out[d]) for d in days]
+
+
+def _week_start(d):
+    return d - dt.timedelta(days=(d.weekday() - WEEK_START_WEEKDAY) % 7)
+
+
+def compute_ath_gauge(daily, ref_date, price_now, div_now):
+    """daily: [(date, close)] 오름차순, 완결 일봉만. 오늘 22:00 KST 값(price_now, div_now)을 마지막 점으로 더한다."""
+    wk = {}
+    for d, c in daily:                           # 주봉 종가 = 그 주 마지막 일봉 종가
+        wk[_week_start(d)] = c
+    weeks = sorted(wk)
+    series = []
+    for d, c in daily:
+        if d < GAUGE_START:
+            continue
+        done = [wk[w] for w in weeks if w < _week_start(d)][-(SMA_WEEKS - 1):]
+        if len(done) < SMA_WEEKS - 1:
+            raise RuntimeError(f"{d}: 완결 주봉 부족 {len(done)}/{SMA_WEEKS-1}")
+        sma = (sum(done) + c) / SMA_WEEKS
+        series.append((d.isoformat(), round((c / sma - 1) * 100, 3)))
+    series.append((ref_date.isoformat() + " 22:00KST", round(div_now, 3)))
+
+    lo = min(series, key=lambda x: x[1])
+    hi = max(series, key=lambda x: x[1])
+
+    cand = [(d, c) for d, c in daily if d >= ATH_SEED] + [(ref_date, price_now)]
+    ath_d, ath_c = max(cand, key=lambda x: x[1])
+    seed_close = dict(daily).get(ATH_SEED)
+    prior_max = max((c for d, c in daily if d < ATH_SEED), default=None)
+    return {
+        "ath_date": ath_d.isoformat(), "ath_close": round(ath_c, 2),
+        "ath_is_today": ath_d == ref_date,
+        "ath_seed_close": seed_close,
+        "prior_max_before_seed": prior_max,      # ATH_SEED 이전 구간 최고 종가(시드보다 낮아야 정상)
+        "gauge_start": GAUGE_START.isoformat(),
+        "div_min": {"date": lo[0], "value": lo[1]},
+        "div_max": {"date": hi[0], "value": hi[1]},
+        "div_now": round(div_now, 3),
+        "needle_pct": round((div_now + 30) / 80 * 100, 2),
+        "daily_closes": [[d.isoformat(), round(c, 2)] for d, c in daily],   # Claude 재계산 검증용 원자료
+    }
+
+
+def fetch_ath_gauge(ref_date, price_now, div_now):
+    ref_utc = dt.datetime.combine(ref_date, dt.time(22, 0), tzinfo=KST).astimezone(UTC).date()
+    start = _week_start(GAUGE_START) - dt.timedelta(weeks=SMA_WEEKS + 1)
+    daily = cb_daily_range(start, ref_utc)       # ref_utc 당일 일봉은 미완결 → 제외
+    v = compute_ath_gauge(daily, ref_date, price_now, div_now)
+    v["seed_warning"] = (
+        "ATH_SEED 이전 종가가 시드보다 높다 — Coinbase 종가 기준 ATH일 재확인 필요"
+        if v["prior_max_before_seed"] and v["prior_max_before_seed"] > (v["ath_seed_close"] or 0) else None)
+    return field(
+        value=v,
+        source="Coinbase Exchange /products/BTC-USD/candles granularity=86400",
+        asof=ref_date.isoformat(),
+        method=("ATH=사상 최고 종가(새 최고가 즉시 갱신) · 게이지 구간 2025-10-06 고정 · "
+                "일별 이격률=종가/((그 주 이전 완결 주봉 29개+종가)/30)−1 · 누적 최저/최고 · "
+                "마지막 점=오늘 22:00 KST 이격률"),
+    )
+
 # ───────────────────────── 스냅샷 ─────────────────────────
 
 def previous_snapshot(ref_date):
@@ -485,6 +573,9 @@ def collect(ref_date):
 
     prev = previous_snapshot(ref_date)
     snap["derived"] = derive(snap, prev)
+    dv = snap["derived"].get("divergence_pct")
+    snap["ath_gauge"] = (safe(fetch_ath_gauge, ref_date, snap["price"]["value"], dv)
+                         if dv is not None else field(error="divergence unavailable"))
     snap["unverified"] = [k for k, v in snap.items()
                           if isinstance(v, dict) and v.get("verified") is False]
     return snap
@@ -594,6 +685,18 @@ def main():
     args = [a for a in sys.argv[1:] if a.strip()]   # 빈 문자열 인자 무시
     if "--selftest" in args:
         selftest()
+        return
+    if "--ath-only" in args:
+        # 기존 스냅샷에 ath_gauge만 추가한다. 다른 항목(V-Lab 등)은 재수집하지 않는다 — 시점 오염 방지.
+        ref = dt.date.fromisoformat([a for a in args if a != "--ath-only"][0])
+        path = os.path.join(SNAP_DIR, f"{ref.isoformat()}T2200KST.json")
+        with open(path, encoding="utf-8") as fh:
+            snap = json.load(fh)
+        snap["ath_gauge"] = fetch_ath_gauge(ref, snap["price"]["value"], snap["derived"]["divergence_pct"])
+        with open(path, "w", encoding="utf-8") as fh:
+            json.dump(snap, fh, ensure_ascii=False, indent=2)
+        g = snap["ath_gauge"]["value"]
+        print(f"ATH {g['ath_date']} ${g['ath_close']:,} · 최저 {g['div_min']} · 최고 {g['div_max']}")
         return
     ref = dt.date.fromisoformat(args[0]) if args else dt.datetime.now(KST).date()
     snap = collect(ref)
