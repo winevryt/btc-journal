@@ -1,0 +1,34 @@
+name: ath-backfill
+
+on:
+  workflow_dispatch:
+    inputs:
+      date:
+        description: "ath_gauge를 추가할 기존 스냅샷 날짜 (YYYY-MM-DD)"
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: btc-snapshot
+  cancel-in-progress: false
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: ath-only
+        run: python3 collect.py --ath-only ${{ inputs.date }}
+      - name: commit
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A snapshots
+          git diff --staged --quiet && echo "no changes" && exit 0
+          git commit -m "ath_gauge backfill ${{ inputs.date }}"
+          git push origin HEAD:main
